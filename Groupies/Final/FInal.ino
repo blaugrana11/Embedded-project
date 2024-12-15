@@ -33,9 +33,38 @@ const int obstacleThreshold = 15;
 
 int L = 0, R = 0, distance = 0;
 
+//------------------------------
+const int buttonPin = 8;       // Pin pour le bouton poussoir
+bool turnRight = false;        // Variable pour gérer la direction de rotation
+
+// Bouton poussoir d'arrêt d'urgence
+const int emergencyStopButtonPin = 7; // Nouveau pin pour le bouton d'arrêt d'urgence
+bool emergencyStopActive = false;     // Variable pour suivre l'état du bouton d'arrêt d'urgence
+
+//------------------------------
+
+
 void setup() {
     Serial.begin(9600);
     AFMS.begin();
+//------------------------------
+    pinMode(buttonPin, INPUT_PULLUP);
+    // Vérifier si le bouton est appuyé au démarrage
+    if (digitalRead(buttonPin) == LOW) {
+        turnRight = true;  // Le robot tournera à droite
+        Serial.println("Mode: Tourner à DROITE activé !");
+    } else {
+        turnRight = false; // Par défaut : tourner à gauche
+        Serial.println("Mode: Tourner à GAUCHE activé !");
+    }
+
+    // Configuration des moteurs
+    myMotorLEFT->setSpeed(0);
+    myMotorRIGHT->setSpeed(0);
+
+    // Configuration du bouton d'arrêt d'urgence
+    pinMode(emergencyStopButtonPin, INPUT_PULLUP);  // Le bouton d'arrêt d'urgence est en INPUT_PULLUP
+//------------------------------
 
     pinMode(A0, INPUT);
     pinMode(A1, INPUT);
@@ -46,6 +75,45 @@ void setup() {
 }
 
 void loop() {
+    //------------------------------
+    if (digitalRead(emergencyStopButtonPin) == LOW) {  // Si le bouton est appuyé
+        emergencyStop();
+    }
+
+
+    int valueLeft = analogRead(IR_LEFT);    // Lecture du capteur gauche
+    int valueRight = analogRead(IR_RIGHT);  // Lecture du capteur droit
+
+    // Seuil pour détecter la ligne blanche
+    int threshold = 800;
+
+    // Détection de la discontinuité (zone 9)
+    if (valueLeft < threshold && valueRight < threshold) {
+        delay(100);  // Pause pour confirmer
+        valueLeft = analogRead(IR_LEFT);
+        valueRight = analogRead(IR_RIGHT);
+
+        if (valueLeft < threshold && valueRight < threshold) {
+            Serial.println("Discontinuité détectée - Entrée dans la zone 9 !");
+            
+            // Tourner selon le mode activé
+            if (turnRight) {
+                TurnRightIntoZone();
+            } else {
+                TurnLeftIntoZone();
+            }
+
+            // Avancer pendant 2 secondes
+            forward();
+            delay(2000);
+
+            // Arrêter complètement le robot
+            Stop();
+            Serial.println("Arrêt complet - Zone 9 atteinte !");
+            while (1);  // Boucle infinie pour arrêt complet
+        }
+    }
+    //------------------------------
     distance = DistanceSensor.ping_cm();
     if (distance > 0 && distance <= obstacleThreshold) {
         Obstacle();
@@ -147,3 +215,36 @@ void Stop() {
     myMotorLEFT->run(RELEASE);
     myMotorRIGHT->run(RELEASE);
 }
+
+//------------------------------
+// Fonction pour tourner à gauche dans la zone
+void TurnLeftIntoZone() {
+    myMotorLEFT->setSpeed(baseSpeed / 2);  // Vitesse réduite à gauche
+    myMotorRIGHT->setSpeed(baseSpeed);     // Vitesse normale à droite
+
+    myMotorLEFT->run(BACKWARD);
+    myMotorRIGHT->run(FORWARD);
+    delay(500);  // Durée du virage (à ajuster)
+    Stop();
+    delay(200);
+}
+
+// Fonction pour tourner à droite dans la zone
+void TurnRightIntoZone() {
+    myMotorLEFT->setSpeed(baseSpeed);      // Vitesse normale à gauche
+    myMotorRIGHT->setSpeed(baseSpeed / 2); // Vitesse réduite à droite
+
+    myMotorLEFT->run(FORWARD);
+    myMotorRIGHT->run(BACKWARD);
+    delay(500);  // Durée du virage (à ajuster)
+    Stop();
+    delay(200);
+}
+
+
+void emergencyStop() {
+    Serial.println("Arrêt d'urgence activé !");
+    Stop();  // Arrêter immédiatement les moteurs
+    while (1);  // Boucle infinie pour s'arrêter
+}
+//------------------------------
